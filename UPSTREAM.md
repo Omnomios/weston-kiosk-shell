@@ -3,6 +3,21 @@
 This standalone fork starts from Weston **15.0.1**, matching the installed
 Weston runtime at initial setup.
 
+The `weston-14` branch ports that fork to the Weston 14 plugin ABI. It retains
+the original imported sources and layer-shell implementation, replacing Weston
+15's output-private/readiness APIs and pending buffer references with Weston 14
+equivalents. Compatibility was checked against the official **14.0.2** source
+and runtime:
+
+- Release: https://gitlab.freedesktop.org/wayland/weston/-/releases/14.0.2
+- Archive: https://gitlab.freedesktop.org/wayland/weston/-/releases/14.0.2/downloads/weston-14.0.2.tar.xz
+- Archive SHA-256: `b47216b3530da76d02a3a1acbf1846a9cd41d24caa86448f9c46f78f20b6e0ac`
+
+The headless input-seat test module uses the exported Weston 14 seat functions
+whose declarations are in upstream `libweston/libweston-internal.h`. It is
+never installed or loaded by the normal launch scripts. Tests do not require
+the commit-timing protocol, which Weston 14 does not implement.
+
 - Project: https://gitlab.freedesktop.org/wayland/weston
 - Release: https://gitlab.freedesktop.org/wayland/weston/-/releases/15.0.1
 - Archive: https://gitlab.freedesktop.org/wayland/weston/-/releases/15.0.1/downloads/weston-15.0.1.tar.xz

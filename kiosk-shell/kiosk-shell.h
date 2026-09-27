@@ -113,4 +113,7 @@ struct kiosk_shell_output {
 	struct wl_list *active_surface_tree;
 };
 
+struct kiosk_shell_output *
+kiosk_shell_find_output(struct kiosk_shell *shell, struct weston_output *output);
+
 #endif /* WESTON_KIOSK_SHELL_H */

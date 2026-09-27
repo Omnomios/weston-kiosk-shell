@@ -5,8 +5,8 @@ project('weston-kiosk', 'c',
   default_options: ['c_std=gnu11', 'warning_level=2', 'b_lundef=true'])
 
 # Weston changes its plugin ABI between major releases.
-libweston = dependency('libweston-15', version: ['>= 15.0.1', '< 16.0.0'])
-weston = dependency('weston', version: ['>= 15.0.1', '< 16.0.0'])
+libweston = dependency('libweston-14', version: ['>= 14.0.0', '< 15.0.0'])
+weston = dependency('weston', version: ['>= 14.0.0', '< 15.0.0'])
 wayland = dependency('wayland-server')
 pixman = dependency('pixman-1')
 xkbcommon = dependency('xkbcommon')
@@ -45,25 +45,14 @@ xdg_client = custom_target('xdg-shell-client-header', input: xdg_xml,
   output: 'xdg-shell-client-protocol.h',
   command: [scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
 
-timing_xml = protocols.get_variable(pkgconfig: 'pkgdatadir') / 'staging/commit-timing/commit-timing-v1.xml'
-timing_client = custom_target('commit-timing-client-header', input: timing_xml,
-  output: 'commit-timing-client-protocol.h',
-  command: [scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
-timing_code = custom_target('commit-timing-protocol-code', input: timing_xml,
-  output: 'commit-timing-protocol.c',
-  command: [scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
-presentation_xml = protocols.get_variable(pkgconfig: 'pkgdatadir') / 'stable/presentation-time/presentation-time.xml'
-presentation_client = custom_target('presentation-time-client-header', input: presentation_xml,
-  output: 'presentation-time-client-protocol.h',
-  command: [scanner, 'client-header', '@INPUT@', '@OUTPUT@'])
-presentation_code = custom_target('presentation-time-protocol-code', input: presentation_xml,
-  output: 'presentation-time-protocol.c',
-  command: [scanner, 'private-code', '@INPUT@', '@OUTPUT@'])
-
 protocol_test = executable('layer-shell-client-test',
   'tests/layer-shell-client.c', layer_client, layer_code, xdg_client, xdg_code,
-  timing_client, timing_code, presentation_client, presentation_code,
   dependencies: dependency('wayland-client'))
+
+# Weston 14's headless backend has no --fake-seat option. Keep the synthetic
+# input seat in a test-only module so focus behavior can still be exercised.
+test_seat = shared_module('kiosk-test-seat', 'tests/test-seat.c',
+  dependencies: libweston, name_prefix: '', install: false)
 
 shell = shared_module('weston-kiosk-shell',
   'kiosk-shell/kiosk-shell.c',
@@ -76,14 +65,16 @@ shell = shared_module('weston-kiosk-shell',
   install_dir: module_dir,
   install_rpath: module_dir)
 
-weston_bin = find_program('weston', required: false)
+weston_bin = find_program(get_option('weston_binary'), required: false)
 if weston_bin.found()
   python = import('python').find_installation('python3')
+  test_env = environment()
+  test_env.prepend('LD_LIBRARY_PATH', libweston.get_variable(pkgconfig: 'libdir'))
   test('headless-shell-load', python,
     args: [files('scripts/smoke-test.py'), weston_bin.full_path(), shell.full_path()],
-    timeout: 15)
+    env: test_env, timeout: 15)
   test('layer-shell-integration', python,
     args: [files('tests/run-layer-shell-tests.py'), weston_bin.full_path(),
-           shell.full_path(), protocol_test.full_path()],
-    timeout: 45)
+           shell.full_path(), protocol_test.full_path(), test_seat.full_path()],
+    env: test_env, timeout: 45)
 endif

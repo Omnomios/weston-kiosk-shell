@@ -1,2 +1,4 @@
 option('weston_module_dir', type: 'string', value: '',
   description: 'Weston module directory containing libexec_weston (defaults to libweston libdir/weston)')
+option('weston_binary', type: 'string', value: 'weston',
+  description: 'Weston 14 executable used by the integration tests')

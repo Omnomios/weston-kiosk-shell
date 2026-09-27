@@ -9,13 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <time.h>
 #include <unistd.h>
 #include <wayland-client.h>
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
-#include "commit-timing-client-protocol.h"
-#include "presentation-time-client-protocol.h"
 
 #define TOP ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP
 #define BOTTOM ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM
@@ -33,9 +30,6 @@ struct context {
     struct wl_surface *keyboard_focus;
     struct zwlr_layer_shell_v1 *shell;
     struct xdg_wm_base *xdg;
-    struct wp_commit_timing_manager_v1 *timing;
-    struct wp_presentation *presentation;
-    clockid_t presentation_clock;
 };
 struct window {
     struct context *ctx;
@@ -66,11 +60,6 @@ static void seat_name(void *data, struct wl_seat *seat, const char *name) {}
 static const struct wl_seat_listener seat_listener = { capabilities, seat_name };
 static void ping(void *data, struct xdg_wm_base *xdg, uint32_t serial) { xdg_wm_base_pong(xdg, serial); }
 static const struct xdg_wm_base_listener xdg_listener = { ping };
-static void clock_id(void *data, struct wp_presentation *presentation, uint32_t clock)
-{
-    ((struct context *)data)->presentation_clock = clock;
-}
-static const struct wp_presentation_listener presentation_listener = { clock_id };
 static void global(void *data, struct wl_registry *registry, uint32_t name, const char *interface, uint32_t version)
 {
     struct context *ctx = data;
@@ -83,11 +72,6 @@ static void global(void *data, struct wl_registry *registry, uint32_t name, cons
     } else if (!strcmp(interface, "zwlr_layer_shell_v1")) {
         CHECK(version == 4);
         ctx->shell = wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, 4);
-    } else if (!strcmp(interface, "wp_commit_timing_manager_v1")) {
-        ctx->timing = wl_registry_bind(registry, name, &wp_commit_timing_manager_v1_interface, 1);
-    } else if (!strcmp(interface, "wp_presentation")) {
-        ctx->presentation = wl_registry_bind(registry, name, &wp_presentation_interface, 1);
-        wp_presentation_add_listener(ctx->presentation, &presentation_listener, ctx);
     } else if (!strcmp(interface, "xdg_wm_base")) {
         ctx->xdg = wl_registry_bind(registry, name, &xdg_wm_base_interface, 1);
         xdg_wm_base_add_listener(ctx->xdg, &xdg_listener, ctx);
@@ -204,22 +188,14 @@ static void normal_tests(struct context *ctx, bool hold)
     check_size(&app, 800, 511);
     zwlr_layer_surface_v1_set_exclusive_zone(panel.layer, 82);
     settle(ctx); check_size(&app, 800, 511); // State is double buffered.
-    CHECK(ctx->timing && ctx->presentation);
-    struct wp_commit_timer_v1 *timer = wp_commit_timing_manager_v1_get_timer(ctx->timing, panel.surface);
-    struct timespec timestamp;
-    CHECK(clock_gettime(ctx->presentation_clock, &timestamp) == 0);
-    timestamp.tv_nsec += 250000000;
-    if (timestamp.tv_nsec >= 1000000000) { timestamp.tv_sec++; timestamp.tv_nsec -= 1000000000; }
-    wp_commit_timer_v1_set_timestamp(timer, (uint64_t)timestamp.tv_sec >> 32,
-                                    timestamp.tv_sec, timestamp.tv_nsec);
+    // Weston 14 has no commit-timing protocol. Still check that state queued
+    // after a commit does not change the state applied by that commit.
     wl_surface_commit(panel.surface);
     zwlr_layer_surface_v1_set_exclusive_zone(panel.layer, 10); // Pending for a later commit.
-    settle(ctx); check_size(&app, 800, 511);
-    usleep(300000); settle(ctx); check_size(&app, 800, 481); // Must use snapshotted zone=82.
+    settle(ctx); check_size(&app, 800, 481); // Must use committed zone=82.
     wl_surface_commit(panel.surface); settle(ctx); check_size(&app, 800, 553);
     zwlr_layer_surface_v1_set_exclusive_zone(panel.layer, 82);
     wl_surface_commit(panel.surface); settle(ctx); check_size(&app, 800, 481);
-    wp_commit_timer_v1_destroy(timer);
     zwlr_layer_surface_v1_set_margin(panel.layer, 8, 0, 0, 0);
     wl_surface_commit(panel.surface); settle(ctx); check_size(&app, 800, 473);
 

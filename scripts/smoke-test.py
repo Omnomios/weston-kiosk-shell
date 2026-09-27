@@ -9,7 +9,7 @@ import tempfile
 with tempfile.TemporaryDirectory(prefix='weston-kiosk-test-') as runtime:
     log = Path(runtime) / 'weston.log'
     result = subprocess.run(
-        [sys.argv[1], '--backend=headless', '--renderer=pixman', '--fake-seat',
+        [sys.argv[1], '--backend=headless', '--renderer=pixman',
          '--no-config', '--idle-time=0', '--socket=kiosk-test',
          f'--shell={sys.argv[2]}', f'--log={log}', '--', '/usr/bin/true'],
         env={**os.environ, 'XDG_RUNTIME_DIR': runtime},

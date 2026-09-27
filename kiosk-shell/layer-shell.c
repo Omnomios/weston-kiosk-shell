@@ -277,7 +277,7 @@ void kiosk_layer_shell_arrange(struct kiosk_shell *shell, struct weston_output *
     struct weston_geometry full, usable;
     if (!output || shell->layer_shutting_down)
         return;
-    shoutput = weston_output_get_shell_private(output);
+    shoutput = kiosk_shell_find_output(shell, output);
     if (!shoutput)
         return;
     full = (struct weston_geometry){ 0, 0, output->width, output->height };
@@ -374,7 +374,7 @@ static void surface_commit(struct wl_listener *listener, void *data)
     kiosk_layer_shell_arrange(layer->shell, layer->output);
 }
 
-/* libweston 15 has an applied-commit signal but no public pre-commit hook.
+/* libweston 14 has an applied-commit signal but no public pre-commit hook.
  * Observe client commit requests through Wayland's public protocol logger API
  * to associate metadata with each queued core transaction. Nothing is logged.
  */
@@ -408,7 +408,7 @@ static void protocol_request(void *data, enum wl_protocol_logger_type direction,
     commit->acknowledged = layer->acknowledged;
     wl_list_insert(layer->commits.prev, &commit->link);
     if (surface->pending.status & WESTON_SURFACE_DIRTY_BUFFER) {
-        bool has_buffer = surface->pending.buffer_ref.buffer != NULL;
+        bool has_buffer = surface->pending.buffer != NULL;
         if (layer->request_has_buffer && !has_buffer) {
             /* Reset request-side state now, not when its transaction applies. */
             layer->pending = (struct layer_state){ .layer = layer->initial_layer };
@@ -547,10 +547,10 @@ static void destroy_request(struct wl_client *client, struct wl_resource *resour
 
 static void get_popup(struct wl_client *client, struct wl_resource *resource, struct wl_resource *popup)
 {
-    /* libweston-desktop 15 rejects parentless XDG popups before this request
+    /* libweston-desktop 14 rejects parentless XDG popups before this request
      * can run. Supporting them requires an upstream desktop API extension. */
     wl_resource_post_error(resource, ZWLR_LAYER_SURFACE_V1_ERROR_INVALID_SURFACE_STATE,
-                           "layer-shell XDG popups are not supported by libweston-desktop 15");
+                           "layer-shell XDG popups are not supported by libweston-desktop 14");
 }
 
 static const struct zwlr_layer_surface_v1_interface surface_impl = {
@@ -585,7 +585,7 @@ static void get_layer_surface(struct wl_client *client, struct wl_resource *reso
     bool committed = false;
     wl_list_for_each(track, &shell->layer_surface_tracks, link)
         if (track->surface == surface) committed = track->committed;
-    if (committed || weston_surface_has_content(surface) || surface->pending.buffer_ref.buffer) {
+    if (committed || weston_surface_has_content(surface) || surface->pending.buffer) {
         wl_resource_post_error(resource, ZWLR_LAYER_SHELL_V1_ERROR_ALREADY_CONSTRUCTED,
                                "wl_surface has a buffer or was already committed");
         return;

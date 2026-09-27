@@ -7,8 +7,9 @@ Koya can provide backgrounds, panels, and overlays while kiosk applications
 fill the remaining screen space. A panel's positive exclusive zone reduces the
 area available to applications; removing the panel restores that space.
 
-This repository builds a standalone `weston-kiosk-shell.so` module, based on
-Weston **15.0.1**. It uses the installed Weston compositor and can coexist with
+This **`weston-14` branch** builds a standalone `weston-kiosk-shell.so` module
+for Weston **14.x**, tested against **14.0.2**. The original fork is based on
+Weston 15.0.1. It uses the installed Weston compositor and can coexist with
 the standard kiosk-shell module. It does not contain the full Weston source tree.
 
 The implementation is scoped to Koya's shell surfaces. It advertises layer-shell
@@ -17,19 +18,19 @@ version **4**; layer-shell XDG popups are outside the current scope. See
 
 ## Requirements
 
-- Weston **15.x**, at least **15.0.1**, with matching development headers.
+- Weston **14.x** with matching development headers, including the Xwayland API header.
 - A C compiler, Meson 0.63 or newer, Ninja, and pkg-config.
 - Wayland server/client development libraries and `wayland-scanner`.
-- Wayland protocols, including the commit-timing protocol used by the tests.
+- Wayland protocols.
 - Pixman and xkbcommon development libraries.
 - Python 3 for the integration tests and screenshot helper.
 
 The wlr-layer-shell protocol XML is included in this repository. Koya is only
 needed for the interactive Koya fixture, not for building the module or running
-the headless tests. Weston 16 and other major versions are not supported;
+the headless tests. Weston 15, 16, and other major versions are not supported by this branch;
 Weston's plugin ABI changes between major releases.
 
-On Fedora, install the dependencies with:
+On a Fedora release providing Weston 14, install the dependencies with:
 
 ```sh
 sudo dnf install gcc meson ninja-build pkgconf-pkg-config weston weston-devel \
@@ -44,23 +45,39 @@ From the repository root:
 ./scripts/build.sh
 ```
 
-The resulting module is `build/weston-kiosk-shell.so`. The script configures
-Meson on the first run and rebuilds on subsequent runs. It also detects Fedora's
-`/usr/lib64/weston` module directory.
+The resulting module is `build-weston14/weston-kiosk-shell.so`. This separate
+build directory preserves any existing Weston 15 build. The script configures
+Meson on the first run and rebuilds on subsequent runs.
 
 To configure the build directly:
 
 ```sh
-meson setup build
-meson compile -C build
+meson setup build-weston14
+meson compile -C build-weston14
 ```
 
 If Meson cannot find `libexec_weston`, specify the directory containing Weston's
 modules when configuring:
 
 ```sh
-meson setup build -Dweston_module_dir=/path/to/weston/modules
+meson setup build-weston14 -Dweston_module_dir=/path/to/weston/modules
 ```
+
+If your system runs another Weston version, install Weston 14 into a separate
+prefix and use it for both building and launching:
+
+```sh
+export WESTON_PREFIX=/path/to/weston14
+./scripts/build.sh
+./scripts/test-nested.sh
+```
+
+The scripts add the prefix's `bin`, `lib`/`lib64`, and pkg-config directories to
+the relevant environment paths. An installation under `.deps/weston14` is
+detected automatically. Set `WESTON_BIN` to override the runtime executable.
+For direct Meson configuration, supply matching `PKG_CONFIG_PATH` and
+`-Dweston_binary=/path/to/weston14/bin/weston`. The shell must run under Weston
+14; it cannot be loaded into the system's Weston 15 compositor.
 
 ## Run inside GNOME
 
@@ -143,14 +160,17 @@ expected geometry, stacking, and input behavior.
 Run the automated tests after building:
 
 ```sh
-meson test -C build --print-errorlogs
+meson test -C build-weston14 --print-errorlogs
 ```
 
 These tests use isolated headless Weston instances and do not require Koya or a
 graphical desktop. They check module loading, configure/acknowledge sequencing,
-exclusive zones and margins, deferred commits, keyboard focus, unmapping and
+exclusive zones and margins, commit buffering, keyboard focus, unmapping and
 remapping, invalid requests, resource destruction, and compositor shutdown with
-mapped clients. Local Unix socket access is required.
+mapped clients. Local Unix socket access is required. A test-only module creates
+the input seat because Weston 14's headless backend has no `--fake-seat` option.
+Weston 14 does not implement commit timing, so the timed deferred-commit test
+from the Weston 15 version is replaced with a commit-state buffering check.
 
 To capture the nested Koya fixture, set `KOYA_BIN` and `KOYA_ASSETS` as above and
 run:
@@ -161,11 +181,14 @@ python3 scripts/capture-koya-test.py
 
 The helper launches the fixture, checks that all three layer surfaces report
 `CREATED`, captures the compositor output, and closes the temporary session.
-PNGs are written to `build/screenshots/` and logs to `build/koya-capture.log`.
-It requires a graphical session, `weston-screenshooter`, and `stdbuf`.
+PNGs are written to `build-weston14/screenshots/` and logs to
+`build-weston14/koya-capture.log`.
+It requires a graphical session, Weston **14's** `weston-screenshooter`, and
+`stdbuf`. A private Weston prefix must include the screenshot client; a
+Weston 15 screenshot client cannot capture from Weston 14.
 
 For manual capture, launch with `WESTON_DEBUG=1`, then run
-`weston-screenshooter` in another terminal with `WAYLAND_DISPLAY` set to the
+`./scripts/capture-output.sh` in another terminal with `WAYLAND_DISPLAY` set to the
 nested compositor's `weston-kiosk-*` socket. Set `XDG_PICTURES_DIR` to choose the
 destination. The capture comes directly from the nested compositor's output.
 
@@ -175,7 +198,7 @@ Local development uses the build module directly; installation is optional.
 To install into the configured Weston module directory:
 
 ```sh
-meson install -C build
+meson install -C build-weston14
 ```
 
 Writing to a system module directory may require elevated privileges. After
@@ -222,7 +245,7 @@ pointer and touch delivery.
 
 The current scope has two explicit limitations:
 
-- **Layer-shell XDG popups are unsupported.** Weston 15's libweston-desktop
+- **Layer-shell XDG popups are unsupported.** Weston 14's libweston-desktop
   rejects the parentless popup required by `get_popup`; support would require
   desktop-library changes in addition to this plugin. Koya's background,
   panel, and overlay fixture does not use these popups.

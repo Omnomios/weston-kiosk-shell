@@ -15,6 +15,8 @@ Environment:
   WESTON_HEIGHT  Window height in pixels (default: 720)
   WESTON_RENDERER Renderer to use (default: pixman; use gl for Vulkan apps)
   WESTON_DEBUG   Set to 1 to allow weston-screenshooter captures for testing
+  WESTON_PREFIX  Optional private Weston 14 installation prefix
+  WESTON_BIN     Weston 14 executable (default: weston from PATH)
 EOF
     exit 0
 fi
@@ -41,6 +43,7 @@ if [ "$#" -gt 0 ] && ! command -v "$1" >/dev/null 2>&1; then
 fi
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$project_dir/scripts/weston14-env.sh"
 "$project_dir/scripts/build.sh"
 
 if [ "$#" -gt 0 ]; then
@@ -49,11 +52,11 @@ fi
 set -- "--backend=$backend" "--renderer=${WESTON_RENDERER:-pixman}" --no-config --idle-time=0 \
     "--width=${WESTON_WIDTH:-1280}" "--height=${WESTON_HEIGHT:-720}" \
     "--socket=weston-kiosk-$$" \
-    "--shell=$project_dir/build/weston-kiosk-shell.so" "$@"
+    "--shell=$project_dir/build-weston14/weston-kiosk-shell.so" "$@"
 if [ "$backend" = wayland ]; then
     set -- "--display=$WAYLAND_DISPLAY" "$@"
 fi
 if [ "${WESTON_DEBUG:-0}" = 1 ]; then
     set -- --debug "$@"
 fi
-exec weston "$@"
+exec "$WESTON_BIN" "$@"

@@ -7,9 +7,9 @@ import subprocess
 import time
 
 root = Path(__file__).resolve().parent.parent
-output = root / 'build/screenshots'
+output = root / 'build-weston14/screenshots'
 output.mkdir(parents=True, exist_ok=True)
-log = root / 'build/koya-capture.log'
+log = root / 'build-weston14/koya-capture.log'
 previous = set(output.glob('*.png'))
 with log.open('w') as stream:
     proc = subprocess.Popen(
@@ -32,7 +32,7 @@ with log.open('w') as stream:
                 raise RuntimeError(role + ' creation failed; see ' + str(log))
         time.sleep(0.5)
         subprocess.run(
-            ['weston-screenshooter'], cwd=root, check=True, timeout=10,
+            ['sh', str(root / 'scripts/capture-output.sh')], cwd=root, check=True, timeout=10,
             env={**os.environ, 'WAYLAND_DISPLAY': socket.name, 'XDG_PICTURES_DIR': str(output)},
         )
         captures = set(output.glob('*.png')) - previous

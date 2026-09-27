@@ -39,6 +39,19 @@
 
 #include <libweston/xwayland-api.h>
 
+/* Weston 14 does not expose per-output shell-private storage. */
+struct kiosk_shell_output *
+kiosk_shell_find_output(struct kiosk_shell *shell, struct weston_output *output)
+{
+	struct kiosk_shell_output *shoutput;
+
+	wl_list_for_each(shoutput, &shell->output_list, link) {
+		if (shoutput->output == output)
+			return shoutput;
+	}
+	return NULL;
+}
+
 static struct kiosk_shell_surface *
 get_kiosk_shell_surface(struct weston_surface *surface)
 {
@@ -269,11 +282,11 @@ kiosk_shell_surface_find_best_output(struct kiosk_shell_surface *shsurf)
 
 	output = weston_shell_utils_get_focused_output(shsurf->shell->compositor);
 	if (output)
-		return weston_output_get_shell_private(output);
+		return kiosk_shell_find_output(shsurf->shell, output);
 
 	output = weston_shell_utils_get_default_output(shsurf->shell->compositor);
 	if (output)
-		return weston_output_get_shell_private(output);
+		return kiosk_shell_find_output(shsurf->shell, output);
 
 	return NULL;
 }
@@ -863,11 +876,8 @@ kiosk_shell_output_create(struct kiosk_shell *shell, struct weston_output *outpu
 
 	wl_list_insert(shell->output_list.prev, &shoutput->link);
 
-	weston_output_set_shell_private(output, shoutput);
-
 	kiosk_shell_output_recreate_background(shoutput);
 	kiosk_shell_output_configure(shoutput);
-	weston_output_set_ready(output);
 
 	return shoutput;
 }
@@ -1179,7 +1189,7 @@ desktop_surface_fullscreen_requested(struct weston_desktop_surface *desktop_surf
 	struct kiosk_shell_output *shoutput = NULL;
 
 	if (output)
-		shoutput = weston_output_get_shell_private(output);
+		shoutput = kiosk_shell_find_output(shsurf->shell, output);
 
 	/* We should normally be able to ignore fullscreen requests for
 	 * top-level surfaces, since we set them as fullscreen at creation
@@ -1370,7 +1380,7 @@ kiosk_shell_handle_output_resized(struct wl_listener *listener, void *data)
 		container_of(listener, struct kiosk_shell, output_resized_listener);
 	struct weston_output *output = data;
 	struct kiosk_shell_output *shoutput =
-		weston_output_get_shell_private(output);
+		kiosk_shell_find_output(shell, output);
 
 	kiosk_shell_output_recreate_background(shoutput);
 	kiosk_layer_shell_arrange(shell, output);

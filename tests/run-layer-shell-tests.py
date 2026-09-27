@@ -12,7 +12,7 @@ with tempfile.TemporaryDirectory(prefix='kiosk-layer-tests-') as runtime:
     env = {**os.environ, 'XDG_RUNTIME_DIR': runtime, 'WAYLAND_DISPLAY': 'layer-test'}
     log = Path(runtime) / 'weston.log'
     proc = subprocess.Popen([
-        sys.argv[1], '--backend=headless', '--renderer=pixman', '--fake-seat',
+        sys.argv[1], '--backend=headless', '--renderer=pixman', f'--modules={sys.argv[4]}',
         '--width=800', '--height=600', '--no-config', '--idle-time=0',
         '--socket=layer-test', f'--shell={sys.argv[2]}', f'--log={log}',
     ], env=env)
