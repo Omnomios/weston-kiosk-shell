@@ -1,0 +1,4 @@
+/build*/
+/.deps/
+/.git-local/
+__pycache__/

@@ -1,131 +1,257 @@
-# Weston kiosk shell fork
+# weston-kiosk
 
-A standalone fork of Weston's kiosk-shell plugin, based on Weston 15.0.1.
-The goal is to support `wlr-layer-shell` so Koya can provide shell elements.
-The shell behavior is initially unchanged; layer-shell support is not yet
-implemented. This project builds
-`weston-kiosk-shell.so`, using a distinct name so it can coexist with the
-standard kiosk shell. See [UPSTREAM.md](UPSTREAM.md) for source provenance
-and [COPYING](COPYING) for the MIT license.
+A fork of Weston's kiosk-shell plugin with **wlr-layer-shell support**, intended
+for building shell elements with Koya.
 
-## Build
+Koya can provide backgrounds, panels, and overlays while kiosk applications
+fill the remaining screen space. A panel's positive exclusive zone reduces the
+area available to applications; removing the panel restores that space.
 
-Requires Weston **15.x** (at least 15.0.1), its development headers, a C
-compiler, Meson, Ninja, pkg-config, and development packages for Wayland
-server, Pixman, and xkbcommon. Python 3 runs the optional headless smoke test.
+This repository builds a standalone `weston-kiosk-shell.so` module, based on
+Weston **15.0.1**. It uses the installed Weston compositor and can coexist with
+the standard kiosk-shell module. It does not contain the full Weston source tree.
 
-On Fedora, install dependencies with:
+The implementation is scoped to Koya's shell surfaces. It advertises layer-shell
+version **4**; layer-shell XDG popups are outside the current scope. See
+[behavior and limitations](#behavior-and-limitations) below.
+
+## Requirements
+
+- Weston **15.x**, at least **15.0.1**, with matching development headers.
+- A C compiler, Meson 0.63 or newer, Ninja, and pkg-config.
+- Wayland server/client development libraries and `wayland-scanner`.
+- Wayland protocols, including the commit-timing protocol used by the tests.
+- Pixman and xkbcommon development libraries.
+- Python 3 for the integration tests and screenshot helper.
+
+The wlr-layer-shell protocol XML is included in this repository. Koya is only
+needed for the interactive Koya fixture, not for building the module or running
+the headless tests. Weston 16 and other major versions are not supported;
+Weston's plugin ABI changes between major releases.
+
+On Fedora, install the dependencies with:
 
 ```sh
 sudo dnf install gcc meson ninja-build pkgconf-pkg-config weston weston-devel \
-  wayland-devel pixman-devel libxkbcommon-devel python3
+  wayland-devel wayland-protocols-devel pixman-devel libxkbcommon-devel python3
 ```
 
-Then build:
+## Build
+
+From the repository root:
 
 ```sh
 ./scripts/build.sh
 ```
 
-This workspace already has matching Weston headers extracted under
-`.deps/weston` from `weston-devel-15.0.1-2.fc44.x86_64.rpm`. The build script
-automatically uses them and keeps the compiler cache inside the workspace.
-These machine-local dependencies and build outputs are ignored by Git.
-Other checkouts should install the development packages above.
+The resulting module is `build/weston-kiosk-shell.so`. The script configures
+Meson on the first run and rebuilds on subsequent runs. It also detects Fedora's
+`/usr/lib64/weston` module directory.
 
-For a standard system installation, the equivalent Meson commands are:
+To configure the build directly:
 
 ```sh
 meson setup build
 meson compile -C build
 ```
 
-If Weston stores its frontend library outside the default
-`libweston` library directory plus `/weston`, pass
-`-Dweston_module_dir=/path/to/weston/modules` to `meson setup`.
-
-## Verify and run
+If Meson cannot find `libexec_weston`, specify the directory containing Weston's
+modules when configuring:
 
 ```sh
-meson test -C build --print-errorlogs
+meson setup build -Dweston_module_dir=/path/to/weston/modules
 ```
 
-The smoke test launches the built shell in an isolated headless Weston with
-a Pixman renderer and fake seat, checks module loading, and verifies clean
-shutdown. It requires permission to create a local Unix socket. It does not
-test application rendering or window management interactions.
+## Run inside GNOME
 
-To test in a window inside your GNOME session:
+Launch an isolated, nested Weston window from a terminal in your graphical
+session:
 
 ```sh
 ./scripts/test-nested.sh
 ```
 
-The script rebuilds the fork and launches a 1280×720 nested compositor with
-an empty background. It uses the Wayland backend in GNOME Wayland sessions
-and the X11 backend in X11 sessions. Close the Weston window or press Ctrl+C
-to exit. Each launch uses a separate socket and ignores your normal Weston
-configuration. If you supply an application, Weston exits when it exits.
+This rebuilds the module and opens a **1280×720 empty background**. The launcher
+selects the Wayland backend in a Wayland session and the X11 backend in an X11
+session. Each launch uses its own Wayland socket and ignores your normal Weston
+configuration. Close the Weston window or press Ctrl+C to exit.
 
-Optionally pass a Wayland application and its arguments, or change the size:
+To launch a Wayland application inside it:
 
 ```sh
 ./scripts/test-nested.sh your-app --your-app-option
+```
+
+Weston exits when the supplied application exits. The application receives the
+nested compositor's display socket.
+
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `WESTON_WIDTH` | `1280` | Nested output width |
+| `WESTON_HEIGHT` | `720` | Nested output height |
+| `WESTON_RENDERER` | `pixman` | Use `gl` for Vulkan applications such as Koya |
+| `WESTON_DEBUG` | Disabled | Set to `1` to permit test screenshot capture |
+
+For example:
+
+```sh
 WESTON_WIDTH=1920 WESTON_HEIGHT=1080 ./scripts/test-nested.sh
 ```
 
-For Vulkan applications such as Koya, use `WESTON_RENDERER=gl` to enable
-Weston's GPU renderer and the buffer formats needed by those clients.
+## Try the Koya fixture
 
-For direct screenshots of the nested output, launch with
-`WESTON_DEBUG=1 ./scripts/test-koya.sh`. In another terminal, set
-`WAYLAND_DISPLAY` to the nested `weston-kiosk-*` socket and run
-`weston-screenshooter`. Set `XDG_PICTURES_DIR` to choose the PNG directory.
-Debug mode permits capture by clients connected to that test compositor.
+The included [Koya test application](tests/koya-shell/README.md) creates:
 
-To install the plugin into Weston's module directory:
+- An XDG diagnostic window that fills the kiosk application area.
+- A background covering the output.
+- A 52-pixel top panel that reserves space above the application.
+- A bottom-right overlay with an animated marker and pointer input.
 
-```sh
-meson install -C build
-```
-
-Installation may require elevated privileges. Local development and testing
-can use the absolute build path directly. Shell plugins must be built for
-the same Weston major version as the runtime; Weston 16 is not supported by
-this initial fork.
-
-## Start modifying the shell
-
-The shell policy and surface/output handling live in
-`kiosk-shell/kiosk-shell.c`. Pointer and touch move grabs live in
-`kiosk-shell/kiosk-shell-grab.c`. Rebuild with `./scripts/build.sh` and rerun
-the smoke test after changes. The `upstream` Git remote points to the Weston
-project for reference; this extracted plugin fork does not import the full
-compositor or its Git history.
-
-## Koya shell test application
+Use an existing Koya build and its base assets. Set their paths when launching:
 
 ```sh
+KOYA_BIN=/path/to/helix/build/koya-base/koya \
+KOYA_ASSETS=/path/to/helix/koya-base/assets \
 ./scripts/test-koya.sh
 ```
 
-This starts the fork in nested Weston with the GL renderer and launches
-the application in [tests/koya-shell](tests/koya-shell). Koya uses the nested
-display socket. The script defaults to the binary and assets in
-`$HOME/projects/helix`; override them with `KOYA_BIN` and `KOYA_ASSETS`.
+Koya's binary and base assets are not bundled. `KOYA_ASSETS` must point to the
+base asset directory containing `fonts/test.ttf` and the runtime's other assets.
+The launcher's defaults are `$HOME/projects/helix/build/koya-base/koya` and
+`$HOME/projects/helix/koya-base/assets`; set the variables for your checkout.
+The launcher selects the GL renderer by default.
 
-To target a compositor you already started:
+To connect to a nested compositor already running, use its socket name and the
+same Koya path variables:
 
 ```sh
 ./scripts/test-koya.sh --connect weston-kiosk-12345
 ```
 
-The XDG diagnostic window remains available if layer-shell surface creation
-fails. Each layer-shell role is attempted independently and failures are
-reported on screen and in the log. There is no XDG substitution for layer
-surfaces. Current Weston is expected to fail those roles because it does not
-advertise `zwlr_layer_shell_v1` yet.
+All three layer surfaces should report `CREATED`. Failures remain visible in
+the diagnostic window and logs; the fixture does not substitute XDG windows for
+failed layer surfaces. Creation alone does not verify correct placement or
+protocol conformance.
 
-See [the test checklist](tests/koya-shell/README.md) for expected geometry,
-stacking, reservation and input behavior. Successful creation alone is not
-a protocol conformance result.
+Press **P** to toggle the panel, **O** to toggle the overlay, **E** to toggle the
+overlay's exclusive keyboard focus, **R** to log surface geometry, and **Esc**
+to quit. See the [manual checklist](tests/koya-shell/README.md#manual-checks) for
+expected geometry, stacking, and input behavior.
+
+## Tests and screenshots
+
+Run the automated tests after building:
+
+```sh
+meson test -C build --print-errorlogs
+```
+
+These tests use isolated headless Weston instances and do not require Koya or a
+graphical desktop. They check module loading, configure/acknowledge sequencing,
+exclusive zones and margins, deferred commits, keyboard focus, unmapping and
+remapping, invalid requests, resource destruction, and compositor shutdown with
+mapped clients. Local Unix socket access is required.
+
+To capture the nested Koya fixture, set `KOYA_BIN` and `KOYA_ASSETS` as above and
+run:
+
+```sh
+python3 scripts/capture-koya-test.py
+```
+
+The helper launches the fixture, checks that all three layer surfaces report
+`CREATED`, captures the compositor output, and closes the temporary session.
+PNGs are written to `build/screenshots/` and logs to `build/koya-capture.log`.
+It requires a graphical session, `weston-screenshooter`, and `stdbuf`.
+
+For manual capture, launch with `WESTON_DEBUG=1`, then run
+`weston-screenshooter` in another terminal with `WAYLAND_DISPLAY` set to the
+nested compositor's `weston-kiosk-*` socket. Set `XDG_PICTURES_DIR` to choose the
+destination. The capture comes directly from the nested compositor's output.
+
+## Install
+
+Local development uses the build module directly; installation is optional.
+To install into the configured Weston module directory:
+
+```sh
+meson install -C build
+```
+
+Writing to a system module directory may require elevated privileges. After
+installation, select the module with:
+
+```sh
+weston --shell=weston-kiosk-shell.so
+```
+
+Alternatively, select it in `weston.ini`:
+
+```ini
+[core]
+shell=weston-kiosk-shell.so
+```
+
+## Behavior and limitations
+
+| Layer | Position relative to kiosk applications |
+| --- | --- |
+| Background | Below applications |
+| Bottom | Below applications, above backgrounds |
+| Top | Above applications |
+| Overlay | Above applications and top surfaces |
+
+Layer state takes effect on surface commit. The implementation handles anchors,
+margins, output selection, dynamic layer changes, buffer unmapping/remapping,
+and close events when an output disappears.
+
+Only mapped surfaces with valid exclusive-edge anchors reserve space. Positive
+zones shrink the usable area, a zero zone does not reserve space, and a `-1`
+zone allows a surface to extend across the full output, ignoring reservations.
+Reservations are processed from the highest layer down, in creation order
+within a layer. The usable area has a one-pixel minimum to avoid invalid kiosk
+configure sizes when reservations exhaust the output.
+
+Kiosk fullscreen and maximized windows are sized, positioned, and clipped to
+the usable area. Removing or unmapping a reserving surface restores space.
+
+Keyboard modes `none`, `exclusive`, and version-4 `on_demand` are supported.
+Exclusive top/overlay surfaces take priority over kiosk focus; on-demand
+surfaces acquire focus through a click or touch. Surface input regions control
+pointer and touch delivery.
+
+The current scope has two explicit limitations:
+
+- **Layer-shell XDG popups are unsupported.** Weston 15's libweston-desktop
+  rejects the parentless popup required by `get_popup`; support would require
+  desktop-library changes in addition to this plugin. Koya's background,
+  panel, and overlay fixture does not use these popups.
+- **Version-5 explicit exclusive-edge selection is not advertised.** The
+  server advertises version 4 even though the vendored XML describes version 5.
+
+The automated tests and Koya fixture cover the intended use cases; this project
+does not claim complete layer-shell protocol conformance.
+
+## Development
+
+- [kiosk-shell/kiosk-shell.c](kiosk-shell/kiosk-shell.c): kiosk policy,
+  application geometry, output handling, and focus integration.
+- [kiosk-shell/layer-shell.c](kiosk-shell/layer-shell.c): layer-shell protocol,
+  surface lifecycle, and arrangement.
+- [kiosk-shell/kiosk-shell-grab.c](kiosk-shell/kiosk-shell-grab.c): pointer and
+  touch move grabs inherited from upstream.
+- [tests/layer-shell-client.c](tests/layer-shell-client.c): protocol integration
+  test client.
+- [tests/koya-shell](tests/koya-shell): interactive Koya fixture.
+
+Rebuild with `./scripts/build.sh` and run the headless tests after changes.
+Use the Koya checklist to verify visible layout and input behavior.
+
+## License and upstream
+
+The shell is licensed under the MIT license; see [COPYING](COPYING).
+Imported files and the vendored protocol retain their original copyright and
+license notices.
+
+See [UPSTREAM.md](UPSTREAM.md) for the pinned Weston release, source archive
+checksum, imported files, and protocol provenance.

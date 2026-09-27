@@ -1,0 +1,2 @@
+option('weston_module_dir', type: 'string', value: '',
+  description: 'Weston module directory containing libexec_weston (defaults to libweston libdir/weston)')
